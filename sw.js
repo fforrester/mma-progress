@@ -4,7 +4,7 @@
    Training data itself is stored separately in localStorage.
    ========================================================= */
 
-const CACHE_NAME = "mma-progress-v3";
+const CACHE_NAME = "mma-progress-v4";
 
 const APP_FILES = [
   "./",
