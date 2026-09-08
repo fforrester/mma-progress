@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MMA Progress"><title>MMA Progress</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f5f6f7;--card:#fff;--text:#15171a;--muted:#6b7280;--line:#e5e7eb;--accent:#1f6f5f;--soft:#e7f2ef;--danger:#a63b3b}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:720px;margin:auto;padding:20px 16px 40px}h1{font-size:28px;margin:0 0 4px}h2{font-size:17px;margin:0 0 12px}
+.muted{color:var(--muted);font-size:14px}.grid{display:grid;gap:12px}.stats{grid-template-columns:repeat(2,1fr);margin-top:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.wide{grid-column:span 2}
+.value{font-size:28px;font-weight:700;margin-top:5px}.section{margin-top:18px}.tabs,.durations{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+button,select,input{min-height:46px;font:inherit;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--text)}
+button{padding:0 12px;font-weight:600}button.active{border-color:var(--accent);background:var(--soft)}.primary{width:100%;background:var(--accent);color:#fff;border-color:var(--accent)}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}select,input{width:100%;padding:0 12px;font-size:16px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0;padding-top:0}.row:last-child{padding-bottom:0}.right{text-align:right}.history{max-height:360px;overflow:auto}
+.history button{min-height:36px;color:var(--danger)}.hidden{display:none}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.toolbar button{flex:1;min-width:130px}
+.status{margin-top:10px;min-height:20px;color:var(--muted);font-size:13px}
+@media(max-width:420px){.form{grid-template-columns:1fr}.tabs,.durations{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><main>
+<header><h1>MMA Progress</h1><p class="muted">Sessions + hours. Nothing else.</p></header>
+
+<section class="grid stats">
+<div class="card wide"><div class="muted" id="periodLabel">All time</div><div class="value" id="totalSessions"></div><div class="muted" id="periodRange"></div></div>
+<div class="card"><div class="muted">Training time</div><div class="value" id="totalTime"></div></div>
+<div class="card"><div class="muted">Average session</div><div class="value" id="avgSession"></div></div>
+</section>
+
+<section class="card section"><h2>View progress</h2>
+<div class="tabs"><button data-view="week">Week</button><button data-view="month">Month</button><button data-view="year">Year</button><button data-view="all" class="active">All time</button></div>
+<div id="anchorWrap" class="section hidden"><label for="anchorDate">Choose a date in that period</label><input id="anchorDate" type="date" value="2026-09-07"></div>
+</section>
+
+<section class="card section"><h2>Add session</h2><form id="addForm">
+<div class="form"><div><label for="sessionDate">Date</label><input id="sessionDate" type="date" value="2026-09-07" required></div>
+<div><label for="discipline">Type</label><select id="discipline"><option>Boxing</option><option>MMA</option><option>BJJ / Grappling</option><option>Wrestling</option><option>1-to-1</option></select></div></div>
+<div class="section"><label>Duration</label><div class="durations"><button type="button" data-minutes="45">45m</button><button type="button" data-minutes="60" class="active">60m</button><button type="button" data-minutes="90">90m</button><button type="button" data-minutes="120">120m</button></div></div>
+<div class="section"><button class="primary" type="submit">Add session</button></div><div id="status" class="status" aria-live="polite"></div>
+</form></section>
+
+<section class="card section"><h2>Breakdown</h2><div id="breakdown"></div></section>
+<section class="card section"><h2>History</h2><div id="history" class="history"></div></section>
+
+<section class="card section"><h2>Backup</h2><p class="muted" style="margin-bottom:12px">Your data is saved on this device. Export a backup to iCloud Drive occasionally.</p>
+<div class="toolbar"><button id="exportBtn" type="button">Export backup</button><button id="restoreBtn" type="button">Restore backup</button></div>
+<input id="restoreFile" class="hidden" type="file" accept="application/json,.json">
+<div id="backupStatus" class="status" aria-live="polite"></div>
+<div class="section"><button id="resetBtn" type="button">Clear all data</button></div></section>
+</main>
+<script>
+(()=>{
+const STARTER=[];
+const KEY="mma-progress-sessions-v1"; const types=["Boxing","MMA","BJJ / Grappling","Wrestling","1-to-1"];
+let sessions; try{sessions=JSON.parse(localStorage.getItem(KEY))||STARTER}catch{sessions=STARTER}
+let view="all",duration=60;
+const $=id=>document.getElementById(id); const tabs=[...document.querySelectorAll("[data-view]")]; const db=[...document.querySelectorAll("[data-minutes]")];
+const save=()=>localStorage.setItem(KEY,JSON.stringify(sessions));
+const parse=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(Date.UTC(y,m-1,d))};
+const iso=d=>d.toISOString().slice(0,10); const add=(d,n)=>{const x=new Date(d);x.setUTCDate(x.getUTCDate()+n);return x};
+const fmt=s=>parse(s).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"});
+const fm=m=>{const h=Math.floor(m/60),r=m%60;return h?(r?`${h}h ${r}m`:`${h}h`):`${r}m`};
+function bounds(){
+ if(view==="all"){if(!sessions.length)return{start:null,end:null,label:"All time"};const ds=sessions.map(s=>s.date).sort();return{start:ds[0],end:ds.at(-1),label:"All time"}}
+ const a=parse($("anchorDate").value);
+ if(view==="week"){const off=(a.getUTCDay()+6)%7,start=add(a,-off),end=add(start,6);return{start:iso(start),end:iso(end),label:"Week"}}
+ if(view==="month"){const start=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth(),1)),end=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth()+1,0));return{start:iso(start),end:iso(end),label:a.toLocaleDateString("en-GB",{month:"long",year:"numeric",timeZone:"UTC"})}}
+ const start=new Date(Date.UTC(a.getUTCFullYear(),0,1)),end=new Date(Date.UTC(a.getUTCFullYear(),11,31));return{start:iso(start),end:iso(end),label:String(a.getUTCFullYear())}
+}
+function selected(){const b=bounds();if(!b.start)return[];return sessions.filter(s=>s.date>=b.start&&s.date<=b.end).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id)}
+function render(){
+ const b=bounds(),data=selected(),mins=data.reduce((n,s)=>n+s.minutes,0);
+ $("periodLabel").textContent=b.label;$("totalSessions").textContent=`${data.length} session${data.length===1?"":"s"}`;
+ $("totalTime").textContent=fm(mins);$("avgSession").textContent=data.length?fm(Math.round(mins/data.length)):"0m";
+ $("periodRange").textContent=b.start?`${fmt(b.start)} – ${fmt(b.end)}`:"No sessions yet";
+ $("breakdown").innerHTML="";types.forEach(name=>{const rows=data.filter(s=>s.discipline===name),mins=rows.reduce((n,s)=>n+s.minutes,0),r=document.createElement("div");r.className="row";r.innerHTML=`<div><strong>${name}</strong><div class="muted">${fm(mins)}</div></div><div class="right"><strong>${rows.length}</strong><div class="muted">sessions</div></div>`;$("breakdown").appendChild(r)});
+ $("history").innerHTML="";if(!data.length)$("history").innerHTML='<p class="muted">No sessions in this period.</p>'; else data.forEach(s=>{const r=document.createElement("div");r.className="row";const l=document.createElement("div");l.innerHTML=`<strong>${s.discipline}</strong><div class="muted">${fmt(s.date)} · ${fm(s.minutes)}</div>`;const del=document.createElement("button");del.type="button";del.textContent="Delete";del.addEventListener("click",()=>{sessions=sessions.filter(x=>x.id!==s.id);save();render()});r.append(l,del);$("history").appendChild(r)});
+}
+tabs.forEach(btn=>btn.addEventListener("click",()=>{view=btn.dataset.view;tabs.forEach(b=>b.classList.toggle("active",b===btn));$("anchorWrap").classList.toggle("hidden",view==="all");render()}));
+db.forEach(btn=>btn.addEventListener("click",()=>{duration=+btn.dataset.minutes;db.forEach(b=>b.classList.toggle("active",b===btn))}));
+$("anchorDate").addEventListener("change",render);
+$("addForm").addEventListener("submit",e=>{e.preventDefault();const date=$("sessionDate").value;if(!date)return;const id=sessions.length?Math.max(...sessions.map(s=>s.id))+1:1;sessions.push({id,date,discipline:$("discipline").value,minutes:duration});save();$("status").textContent="Session added.";render()});
+$("exportBtn").addEventListener("click",()=>{
+ const blob=new Blob([JSON.stringify(sessions,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download=`mma-progress-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
+ $("backupStatus").textContent="Backup created. Save it to iCloud Drive.";
+});
+$("restoreBtn").addEventListener("click",()=>$("restoreFile").click());
+$("restoreFile").addEventListener("change",async e=>{
+ const file=e.target.files&&e.target.files[0]; if(!file)return;
+ try{
+   const parsed=JSON.parse(await file.text());
+   const valid=Array.isArray(parsed)&&parsed.every(x=>x&&typeof x.date==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&types.includes(x.discipline)&&Number.isInteger(x.minutes)&&x.minutes>0&&x.minutes<=360);
+   if(!valid)throw new Error("invalid");
+   if(!confirm(`Restore ${parsed.length} sessions from this backup? This will replace the data currently stored on this device.`)){e.target.value="";return;}
+   sessions=parsed.map((x,i)=>({id:Number.isInteger(x.id)?x.id:i+1,date:x.date,discipline:x.discipline,minutes:x.minutes}));
+   save();render();$("backupStatus").textContent=`Backup restored: ${sessions.length} sessions.`;
+ }catch{ $("backupStatus").textContent="That file is not a valid MMA Progress backup."; }
+ e.target.value="";
+});
+$("resetBtn").addEventListener("click",()=>{if(confirm("Clear all training data stored on this device?")){sessions=[];save();render();$("backupStatus").textContent="All local training data cleared.";}});
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js");render();
+})();
+</script></body></html>
