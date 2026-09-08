@@ -136,12 +136,10 @@ input {
 /* ---------- ADD SESSION FORM ---------- */
 .form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 10px;
 }
-.form > div {
-min-width: 0;
-}
+
 
 /* ---------- BREAKDOWN / HISTORY ROWS ---------- */
 .row {
